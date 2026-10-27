@@ -6834,6 +6834,8 @@ def make_handler(svc: Service):
                     self._json(code, body)
                 elif path == "/v1/chat/completions":
                     self._openai(req)
+                elif path == "/v1/chat/completions/count_tokens":
+                    self._count_openai_tokens(req)
                 elif path == "/v1/messages":
                     self._anthropic(req)
                 elif path == "/v1/messages/count_tokens":
@@ -7375,6 +7377,27 @@ def make_handler(svc: Service):
                                           "reasoning.encrypted_content" in include, validator is not None)
             # the request is also the sampling dict, as on the chat path (temperature, top_p, top_k, seed, ...)
             return ids, thinking, tools, max_new, asm, validator, req
+
+        def _count_openai_tokens(self, req):
+            # Count text chats with the same template and shared settings as generation.
+            # No inference, image fetch, request capture or prompt-cache write.
+            req = svc.with_shared(req, "openai")
+            messages, tools, kw = openai_to_messages(req)
+            require_messages(messages)
+            if images_of(messages):
+                raise ValueError("This token-count endpoint supports text only; image tokens require encoding")
+            if req.get("response_format") or tool_choice_of(req.get("tool_choice"))[0] not in ("auto", "none"):
+                raise ValueError("This token-count endpoint does not support response_format or forced tool calls")
+            if tool_choice_of(req.get("tool_choice"))[0] == "none":
+                tools = None
+            if req.get("strata_mcp") is True and svc.mcp is not None:
+                if not self._own_page("MCP tools can be counted"):
+                    return
+                svc.mcp.wait(10)
+                own = {t.get("name") for t in tools or [] if isinstance(t, dict)}
+                tools = (tools or []) + svc.mcp.template_tools(exclude=own) or None
+            check_request_sampling(req)
+            self._json(200, {"input_tokens": len(svc.encode_prompt(messages, tools, kw, store=False))})
 
         def _count_tokens(self, req):
             """Anthropic's token count, which Claude Code asks for its context figures: the prompt this server would

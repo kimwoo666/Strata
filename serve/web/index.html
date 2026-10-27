@@ -49,6 +49,13 @@
       </div>
     </div>
     <div class="composer-wrap">
+      <div class="context-memory-bar">
+        <div class="toggle-row"><span class="small">Auto summary</span>
+          <button type="button" class="st-toggle" id="memory-toggle" role="switch" aria-checked="false"
+            aria-label="Automatic summaries" aria-describedby="context-memory"></button></div>
+        <span class="muted small" id="context-memory" role="status">Off · full history sent</span>
+        <button type="button" class="st-btn st-btn--secondary" id="memory-open">View / edit summary</button>
+      </div>
       <form class="st-composer" id="composer">
         <div class="attachments" id="attachments" hidden></div>
         <textarea id="input" rows="2" placeholder="Ask anything&hellip;" aria-label="Message"></textarea>
@@ -210,6 +217,22 @@
 </main>
 
 <!-- ============================ Sampling drawer ============================ -->
+<dialog class="memory-dialog" id="memory-dialog" aria-labelledby="memory-title" aria-describedby="memory-help">
+  <form id="memory-form">
+    <h2 class="card-title" id="memory-title">Conversation summary</h2>
+    <p class="muted small" id="memory-help">Check or correct what the model remembers. Original messages stay in this browser.
+      Summaries can miss details and are updated as the conversation grows. Turning summaries off sends the full history again.</p>
+    <p class="muted small" id="memory-info"></p>
+    <label class="st-label" for="memory-text">Summary sent to the model</label>
+    <textarea class="st-input" id="memory-text" rows="12" spellcheck="false" aria-describedby="memory-help memory-error"></textarea>
+    <p class="muted small">Text chats only. Uses this server to summarize. With Max tokens empty, replies reserve up to 4,096 tokens.</p>
+    <p class="memory-error small" id="memory-error" role="alert"></p>
+    <div class="memory-actions">
+      <button class="st-btn st-btn--secondary" type="button" id="memory-cancel">Cancel</button>
+      <button class="st-btn st-btn--primary" type="submit" id="memory-save">Save summary</button>
+    </div>
+  </form>
+</dialog>
 <aside class="st-drawer" id="drawer" data-open="false" aria-label="Sampling and thinking" aria-hidden="true">
   <div class="st-drawer__head"><span class="card-title">Sampling</span>
     <button class="st-btn st-btn--icon" id="drawer-close" aria-label="Close">
@@ -262,6 +285,7 @@
 </aside>
 <div class="scrim" id="scrim" hidden></div>
 <div class="st-toasts" id="toasts" aria-live="polite"></div>
+<script src="web/context.js"></script>
 <script src="web/app.js"></script>
 </body>
 </html>

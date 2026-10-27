@@ -391,9 +391,27 @@ memory, the start looks normal, and only the speed collapses (see the history ta
 
 The server listens on `http://127.0.0.1:8080` (`--port` in setup, or edit the run script).
 
+The server's web Chat page has an **Auto summary** switch, off by default. For text chats, turning it on
+summarizes older turns with the same server before the input fills the context. Recent turns and tool-call
+groups stay together. **View / edit summary** shows the saved summary and lets you correct it; edits are used
+on the next send and checked against the token budget then. Cancel leaves it unchanged. Turning the switch off
+sends the full history again, which can exceed the context limit.
+
+Original chat messages and the summary stay in this browser's chat storage. Existing attachment persistence
+rules still apply; this is not a backup of attached files or images. Summarization requests follow the server's
+normal request-recording settings. A summary can omit details or make mistakes. A failed or interrupted summary
+stops the send and keeps the previous summary. If browser storage is full, saving fails visibly instead of
+replacing the summary only in memory. New chat clears its summary with the chat.
+
+With automatic summaries on and **Max tokens** empty, output is capped at the smaller of 4,096 tokens and one
+eighth of the context. An explicit Max tokens value is used instead. The input also leaves a safety margin of
+up to 2,048 tokens. This feature does not enlarge the model's context or promise faster generation. Pictures
+are not supported with automatic summaries; turn the switch off to send them.
+
 | API | Endpoint |
 | --- | --- |
 | OpenAI Chat Completions (stream and non-stream, tools) | `POST /v1/chat/completions` |
+| Text chat token count (template and tools included, no generation) | `POST /v1/chat/completions/count_tokens` |
 | Anthropic Messages (stream and non-stream, tools) | `POST /v1/messages` |
 | OpenAI Responses (stream and non-stream, tools; stateless, [below](#the-responses-api-and-codex-cli)) | `POST /v1/responses` |
 | Model list and health | `GET /v1/models`, `GET /models`, `GET /health` |
@@ -405,6 +423,11 @@ The server listens on `http://127.0.0.1:8080` (`--port` in setup, or edit the ru
 | Request totals in llama-server's metric names | `GET /metrics/prometheus` |
 | The MCP servers, their state and tools ([below](#tools-from-mcp-servers)) | `GET /mcp` |
 | API request monitor ([below](#api-request-monitor)) | `GET /api-monitor`, `GET /api/requests` |
+
+The text chat token-count endpoint accepts Chat Completions messages and returns `{"input_tokens": N}`.
+It uses the same authentication, shared thinking settings, template and tool schemas, without running the
+model or recording a generation request. It rejects images, `response_format` and forced tool calls rather
+than returning a count that omits their extra input. `strata_mcp: true` requires a trusted page as on chat requests.
 
 ```python
 from openai import OpenAI

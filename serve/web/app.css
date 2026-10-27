@@ -157,6 +157,20 @@ main { flex: 1; min-height: 0; display: flex; }
 .toggle-row .st-toggle { flex: none; }   /* a long label must not squeeze the switch */
 
 /* ---------------------------------------------------------------- drawer */
+.context-memory-bar { display: flex; align-items: center; gap: 12px; padding: 0 8px 8px; flex-wrap: wrap;
+                      max-width: 860px; margin: 0 auto; box-sizing: border-box; }
+.context-memory-bar > .st-btn { margin-left: auto; }
+.memory-dialog { width: min(720px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto;
+                 box-sizing: border-box; border: 1px solid var(--st-line); border-radius: var(--st-r-lg);
+                 background: var(--st-surface); color: var(--st-ink); padding: 24px; }
+.memory-dialog::backdrop { background: rgba(15, 23, 42, .4); }
+.memory-dialog form { display: flex; flex-direction: column; gap: 12px; }
+.memory-dialog h2, .memory-dialog p { margin: 0; }
+.memory-dialog textarea { width: 100%; box-sizing: border-box; min-height: 180px; max-height: 50dvh; resize: vertical; line-height: 1.6; }
+.memory-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.memory-error { color: var(--st-danger); }
+.memory-error:empty { display: none; }
+
 .st-drawer { z-index: 40; }
 .scrim { position: fixed; inset: 0; background: rgba(15, 23, 42, .18); z-index: 39; }
 .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 4px; background: var(--st-surface-2);

@@ -586,9 +586,74 @@ let attachments = [];                 // {name, url}
 let busy = null;                      // {controller, msg}
 
 function saveChat() {
-  store.set("chat", messages.map((m) => ({...m, images: (m.images || []).map((i) => ({name: i.name})),
+  return store.set("chat", messages.map((m) => ({...m, images: (m.images || []).map((i) => ({name: i.name})),
                                            files: (m.files || []).map((f) => ({name: f.name}))})));
 }
+let summaryEnabled = store.get("summaryEnabled", false) === true;
+let memoryEditing = null;
+function updateContextMemoryStatus() {
+  const memory = messages[0] && messages[0].contextMemory;
+  $("memory-toggle").setAttribute("aria-checked", String(summaryEnabled));
+  $("context-memory").textContent = !summaryEnabled ? "Off · full history sent" :
+    memory && memory.summary ? "Summary in use · originals kept" : "On · summarizes when context fills";
+}
+$("memory-toggle").onclick = () => {
+  if (busy) return;
+  if (!store.set("summaryEnabled", !summaryEnabled)) {
+    toast("error", "Setting not saved", "Browser storage is unavailable. Try again after making room.");
+    return;
+  }
+  summaryEnabled = !summaryEnabled;
+  updateContextMemoryStatus();
+};
+$("memory-open").onclick = () => {
+  if (busy) return;
+  const first = messages[0], memory = first && first.contextMemory;
+  const exists = !!(memory && typeof memory.summary === "string" && memory.summary.trim());
+  memoryEditing = exists ? {first, memory, saved: JSON.stringify(store.get("chat", null))} : null;
+  $("memory-text").value = exists ? memory.summary : "";
+  $("memory-text").readOnly = !exists;
+  $("memory-save").disabled = !exists;
+  $("memory-error").textContent = "";
+  $("memory-info").textContent = exists ? (summaryEnabled ? "This summary is used for the next message." :
+    "Saved summary · not in use while automatic summaries are off.") :
+    "No summary yet. Turn on automatic summaries; one is created when the conversation approaches the context limit.";
+  $("memory-dialog").showModal();
+};
+$("memory-cancel").onclick = () => $("memory-dialog").close();
+$("memory-dialog").addEventListener("close", () => {
+  memoryEditing = null;
+  $("memory-text").value = "";
+});
+$("memory-form").onsubmit = (event) => {
+  event.preventDefault();
+  if (!memoryEditing) return;
+  if (busy || messages[0] !== memoryEditing.first || messages[0].contextMemory !== memoryEditing.memory) {
+    $("memory-error").textContent = "The chat changed. Close this dialog and open it again.";
+    return;
+  }
+  if (JSON.stringify(store.get("chat", null)) !== memoryEditing.saved) {
+    $("memory-error").textContent = "The saved chat changed in another tab. Copy your draft, then reload before editing.";
+    return;
+  }
+  const summary = $("memory-text").value.trim();
+  if (!summary) {
+    $("memory-error").textContent = "Enter a summary. To use the full history, turn off automatic summaries.";
+    $("memory-text").focus();
+    return;
+  }
+  const previous = memoryEditing.memory;
+  messages[0].contextMemory = {...previous, summary};
+  if (!saveChat()) {
+    messages[0].contextMemory = previous;
+    $("memory-error").textContent = "Could not save to browser storage. Your draft is still here; make room and try again.";
+    return;
+  }
+  updateContextMemoryStatus();
+  $("memory-dialog").close();
+  toast("success", "Summary saved", summaryEnabled ? "Used from your next message. Original messages are kept." :
+    "Turn on automatic summaries to use it. Original messages are kept.");
+};
 function timeStr(t) { return new Date(t).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}); }
 
 function msgEl(m, i) {
@@ -710,6 +775,7 @@ function updateAssistant(el, m, streaming) {
   el.querySelector("[data-msg-copy]").hidden = streaming || !m.text;
 }
 function renderChat() {
+  updateContextMemoryStatus();
   const chat = $("chat");
   chat.querySelectorAll(".st-msg").forEach((e) => e.remove());
   $("chat-empty").hidden = messages.length > 0;
@@ -785,6 +851,8 @@ function assistantMessages(m) {
 }
 
 function setBusy(on) {
+  $("memory-open").disabled = on;
+  $("memory-toggle").disabled = on;
   $("stop-btn").hidden = !on;
   $("send-btn").disabled = on;
   $("composer-hint").textContent = on ? "" : "Shift+Enter: new line";
@@ -822,6 +890,36 @@ async function send() {
   let firstAt = null, thinkStart = null, usage = null, frame = 0;
   const paint = () => { frame = 0; updateAssistant(el, m, true); scrollDown(); };
   try {
+    if (summaryEnabled) {
+      // Opt-in only: the default path sends the same request without a count or summary call.
+      const response = await fetch("health", {cache: "no-store", signal: controller.signal});
+      if (!response.ok) throw new Error("Could not read the server's context size.");
+      const current = await response.json();
+      body.model = current.model;
+      const post = async (path, payload) => {
+        const r = await fetch(path, {method: "POST", headers: headers(true),
+          body: JSON.stringify(payload), signal: controller.signal});
+        const data = await r.json();
+        if (!r.ok) throw new Error((data.error && data.error.message) || `HTTP ${r.status}`);
+        return data;
+      };
+      const prepared = await StrataContext.prepare({messages: body.messages,
+        state: messages[0].contextMemory, model: body.model, maxContext: current.max_context,
+        maxTokens: settings.max, thinking: settings.thinking, mcp: !!body.strata_mcp, post,
+        onProgress: (text) => { $("context-memory").textContent = text; },
+        onCommit: (state) => {
+          const previous = messages[0].contextMemory;
+          messages[0].contextMemory = state;
+          if (!saveChat()) {
+            if (previous) messages[0].contextMemory = previous;
+            else delete messages[0].contextMemory;
+            throw new Error("Could not save the summary. Sending stopped; make room in browser storage and try again.");
+          }
+        }
+      });
+      body.messages = prepared.messages;
+      body.max_tokens = prepared.maxTokens;
+    }
     const r = await fetch("v1/chat/completions", {method: "POST", headers: headers(true), body: JSON.stringify(body),
                                                    signal: controller.signal});
     if (!r.ok) {
@@ -887,6 +985,7 @@ async function send() {
   if (frame) cancelAnimationFrame(frame);
   updateAssistant(el, m, false);
   saveChat();
+  updateContextMemoryStatus();
   scrollDown();
 }
 
